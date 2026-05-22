@@ -23,6 +23,12 @@ def _int_env(key: str, default: int) -> int:
 # The Discord role name that grants admin access to hero commands.
 ADMIN_ROLE_NAME: str = os.getenv("ADMIN_ROLE_NAME", "Hero Admin")
 
+# Your Discord server (guild) ID — enables instant slash-command sync.
+# Right-click your server icon in Discord → Copy Server ID (needs Developer Mode on).
+# Leave blank to use slow global sync (up to 1 hour to appear).
+_guild_id_raw = os.getenv("GUILD_ID", "").split("#")[0].strip()
+GUILD_ID: int | None = int(_guild_id_raw) if _guild_id_raw else None
+
 
 # ── Database ──────────────────────────────────────────────────────────────────
 

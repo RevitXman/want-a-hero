@@ -7,11 +7,16 @@ Schema (hero_requests):
   discord_username  TEXT     NOT NULL
   game_name         TEXT     NOT NULL
   alliance          TEXT     NOT NULL
+  hero              TEXT     NOT NULL DEFAULT ''
   medals_needed     INTEGER  NOT NULL
   universal_medals  INTEGER  (nullable)
   week_start        TEXT     NOT NULL   -- ISO date of Monday (UTC) for that MGE week
   created_at        TEXT     NOT NULL   -- ISO datetime (UTC)
   updated_at        TEXT     NOT NULL   -- ISO datetime (UTC)
+
+Migration note:
+  If the database was created before the `hero` column was added, _init_db()
+  runs a safe ALTER TABLE to add it rather than requiring a manual migration.
 """
 
 import sqlite3
@@ -26,7 +31,6 @@ def _utcnow() -> datetime:
 
 def _monday_of_week(dt: datetime) -> datetime:
     """Return the Monday 00:00 UTC of the week that `dt` falls in."""
-    # weekday(): Monday=0, Sunday=6
     monday = dt - timedelta(days=dt.weekday())
     return monday.replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -47,6 +51,7 @@ class Database:
 
     def _init_db(self) -> None:
         with self._connect() as conn:
+            # Create table if it doesn't exist yet
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS hero_requests (
@@ -55,6 +60,7 @@ class Database:
                     discord_username TEXT    NOT NULL,
                     game_name        TEXT    NOT NULL,
                     alliance         TEXT    NOT NULL,
+                    hero             TEXT    NOT NULL DEFAULT '',
                     medals_needed    INTEGER NOT NULL,
                     universal_medals INTEGER,
                     week_start       TEXT    NOT NULL,
@@ -63,6 +69,18 @@ class Database:
                 )
                 """
             )
+
+            # Safe migration: add `hero` column to existing databases that
+            # were created before this column existed.
+            existing_cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(hero_requests)")
+            }
+            if "hero" not in existing_cols:
+                conn.execute(
+                    "ALTER TABLE hero_requests ADD COLUMN hero TEXT NOT NULL DEFAULT ''"
+                )
+
             conn.commit()
 
     @staticmethod
@@ -99,6 +117,7 @@ class Database:
         alliance: str,
         medals_needed: int,
         universal_medals: Optional[int] = None,
+        hero: str = "",
     ) -> int:
         """Insert a new request and return its auto-incremented ID."""
         now = _utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -108,14 +127,16 @@ class Database:
                 """
                 INSERT INTO hero_requests
                     (discord_user_id, discord_username, game_name, alliance,
-                     medals_needed, universal_medals, week_start, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     hero, medals_needed, universal_medals,
+                     week_start, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     discord_user_id,
                     discord_username,
                     game_name,
                     alliance,
+                    hero,
                     medals_needed,
                     universal_medals,
                     week_start,
@@ -159,6 +180,7 @@ class Database:
         alliance: str,
         medals_needed: int,
         universal_medals: Optional[int],
+        hero: str = "",
     ) -> bool:
         """Update an existing request. Returns True if a row was changed."""
         now = _utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -166,11 +188,11 @@ class Database:
             cursor = conn.execute(
                 """
                 UPDATE hero_requests
-                SET game_name = ?, alliance = ?, medals_needed = ?,
-                    universal_medals = ?, updated_at = ?
+                SET game_name = ?, alliance = ?, hero = ?,
+                    medals_needed = ?, universal_medals = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (game_name, alliance, medals_needed, universal_medals, now, request_id),
+                (game_name, alliance, hero, medals_needed, universal_medals, now, request_id),
             )
             conn.commit()
             return cursor.rowcount > 0
