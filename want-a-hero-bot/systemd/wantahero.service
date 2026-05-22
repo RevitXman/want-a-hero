@@ -1,0 +1,34 @@
+[Unit]
+Description=Want-A-Hero Discord Bot
+Documentation=https://github.com/your-org/want-a-hero-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=herobot
+Group=herobot
+WorkingDirectory=/opt/wantahero
+EnvironmentFile=/opt/wantahero/.env
+ExecStart=/opt/wantahero/.venv/bin/python bot.py
+
+# Restart policy — always restart unless explicitly stopped
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Keep stdout/stderr in journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wantahero
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/wantahero/data /opt/wantahero/logs
+
+[Install]
+WantedBy=multi-user.target

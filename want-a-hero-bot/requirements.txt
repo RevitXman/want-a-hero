@@ -1,0 +1,12 @@
+# Want-A-Hero Discord Bot — Python dependencies
+# Install with:  pip install -r requirements.txt
+
+# Discord
+discord.py>=2.3.2
+
+# Environment variable loading
+python-dotenv>=1.0.0
+
+# Google Sheets (only needed if GOOGLE_SHEETS_ENABLED=true)
+gspread>=6.0.0
+google-auth>=2.28.0
