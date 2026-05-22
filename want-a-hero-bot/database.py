@@ -116,7 +116,6 @@ class Database:
         game_name: str,
         alliance: str,
         medals_needed: int,
-        universal_medals: Optional[int] = None,
         hero: str = "",
     ) -> int:
         """Insert a new request and return its auto-incremented ID."""
@@ -129,7 +128,7 @@ class Database:
                     (discord_user_id, discord_username, game_name, alliance,
                      hero, medals_needed, universal_medals,
                      week_start, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                 """,
                 (
                     discord_user_id,
@@ -138,7 +137,6 @@ class Database:
                     alliance,
                     hero,
                     medals_needed,
-                    universal_medals,
                     week_start,
                     now,
                     now,
@@ -179,7 +177,6 @@ class Database:
         game_name: str,
         alliance: str,
         medals_needed: int,
-        universal_medals: Optional[int],
         hero: str = "",
     ) -> bool:
         """Update an existing request. Returns True if a row was changed."""
@@ -189,10 +186,10 @@ class Database:
                 """
                 UPDATE hero_requests
                 SET game_name = ?, alliance = ?, hero = ?,
-                    medals_needed = ?, universal_medals = ?, updated_at = ?
+                    medals_needed = ?, updated_at = ?
                 WHERE id = ?
                 """,
-                (game_name, alliance, hero, medals_needed, universal_medals, now, request_id),
+                (game_name, alliance, hero, medals_needed, now, request_id),
             )
             conn.commit()
             return cursor.rowcount > 0

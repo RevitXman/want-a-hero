@@ -141,17 +141,3 @@ def hero_name(raw: str) -> tuple[str, Optional[str]]:
     return cleaned, None
 
 
-def universal_medals(value: Optional[int]) -> tuple[Optional[int], Optional[str]]:
-    """Validate the optional Universal Medals count.
-
-    Returns:
-        (value_or_None, None)    — valid (None is acceptable — field is optional)
-        (None, error_message)    — invalid
-    """
-    if value is None:
-        return None, None
-    if value < 0:
-        return None, "❌ **Universal Medals** cannot be negative."
-    if value > 99_999:
-        return None, "❌ **Universal Medals** value seems unrealistically large. Please double-check."
-    return value, None

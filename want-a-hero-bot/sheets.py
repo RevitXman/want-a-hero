@@ -11,7 +11,7 @@ Column layout:
   D: Alliance
   E: Hero
   F: Medals Needed
-  G: Universal Medals
+  G: Selected for MGE  ← filled in manually by admins
   H: Submitted At (UTC)
 
 The spreadsheet is identified by GOOGLE_SPREADSHEET_ID in the env.
@@ -39,12 +39,12 @@ _HEADERS = [
     "Alliance",
     "Hero",
     "Medals Needed",
-    "Universal Medals",
+    "Selected for MGE",
     "Submitted At (UTC)",
 ]
 
 # Column widths (pixels) set on new tabs to improve readability
-_COLUMN_WIDTHS = [100, 180, 180, 130, 200, 130, 150, 190]
+_COLUMN_WIDTHS = [100, 180, 180, 130, 200, 130, 140, 190]
 
 
 def _utcnow() -> datetime:
@@ -165,10 +165,12 @@ class SheetsManager:
         game_name: str,
         alliance: str,
         medals_needed: int,
-        universal_medals: Optional[int] = None,
         hero: str = "",
     ) -> None:
-        """Append a hero request row to the current week's tab."""
+        """Append a hero request row to the current week's tab.
+
+        The 'Selected for MGE' column is left blank — admins fill it manually.
+        """
         tab_name = _week_tab_name()
         ws = self._get_or_create_tab(tab_name)
 
@@ -180,7 +182,7 @@ class SheetsManager:
             alliance,
             hero,
             medals_needed,
-            universal_medals if universal_medals is not None else "",
+            "",          # Selected for MGE — filled manually by admins
             now_str,
         ]
         ws.append_row(row, value_input_option="USER_ENTERED")
@@ -191,7 +193,7 @@ class SheetsManager:
         Returns a list of normalised dicts with these keys (matching the DB
         schema so bot.py can use the same embed-building code for both sources):
             id, discord_username, game_name, alliance, hero,
-            medals_needed, universal_medals, created_at
+            medals_needed, selected_for_mge, created_at
 
         Rows where Game Name is blank are skipped (empty / header-only rows).
         Returns [] if the tab doesn't exist yet.
@@ -214,8 +216,7 @@ class SheetsManager:
             if not game_name:
                 continue  # skip blank rows
 
-            # Normalise types — Sheets returns empty cells as "" not None
-            uni = row.get("Universal Medals", "")
+            mge_val = str(row.get("Selected for MGE", "")).strip()
             results.append({
                 "id":               row.get("Request ID", "—"),
                 "discord_username": str(row.get("Discord User", "")).strip(),
@@ -223,7 +224,7 @@ class SheetsManager:
                 "alliance":         str(row.get("Alliance", "")).strip(),
                 "hero":             str(row.get("Hero", "")).strip(),
                 "medals_needed":    row.get("Medals Needed", 0),
-                "universal_medals": int(uni) if str(uni).strip().isdigit() else None,
+                "selected_for_mge": mge_val if mge_val else None,
                 "created_at":       str(row.get("Submitted At (UTC)", "")).strip(),
             })
         return results

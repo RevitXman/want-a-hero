@@ -128,7 +128,6 @@ def _persist_request(
     alliance: str,
     hero: str,
     medals_needed: int,
-    universal_medals: int | None,
 ) -> int:
     """Insert one request row and optionally sync to Sheets. Returns request ID."""
     request_id = bot.db.add_request(
@@ -138,7 +137,6 @@ def _persist_request(
         alliance=alliance,
         hero=hero,
         medals_needed=medals_needed,
-        universal_medals=universal_medals,
     )
     if bot.sheets:
         try:
@@ -149,7 +147,6 @@ def _persist_request(
                 alliance=alliance,
                 hero=hero,
                 medals_needed=medals_needed,
-                universal_medals=universal_medals,
             )
         except Exception as exc:
             logger.error(f"Google Sheets write failed for request #{request_id}: {exc}")
@@ -157,53 +154,35 @@ def _persist_request(
 
 
 # ─────────────────────────────────────────────
-# /wantahero — submit up to 3 hero requests
+# /wantahero — submit a hero request
 # ─────────────────────────────────────────────
 
 
 @bot.tree.command(
     name="wantahero",
-    description="Submit hero unlock request(s) for Age of Empires Mobile.",
+    description="Submit a hero unlock request for Age of Empires Mobile.",
 )
 @app_commands.describe(
     game_name="Your in-game name in Age of Empires Mobile",
     alliance="Your alliance — pick from the list or start typing",
-    hero_1="First hero you need medals for",
-    medals_1="Medals required for Hero 1 (select 1–10)",
-    hero_2="(Optional) Second hero",
-    medals_2="Medals required for Hero 2",
-    hero_3="(Optional) Third hero",
-    medals_3="Medals required for Hero 3",
-    universal_medals="(Optional) Universal Medals you currently own",
+    hero="The hero you need medals for",
+    medals_needed="Medals required to unlock this hero (select 1–10)",
 )
-@app_commands.choices(
-    medals_1=MEDAL_CHOICES,
-    medals_2=MEDAL_CHOICES,
-    medals_3=MEDAL_CHOICES,
-)
+@app_commands.choices(medals_needed=MEDAL_CHOICES)
 @app_commands.autocomplete(
     alliance=alliance_autocomplete,
-    hero_1=hero_autocomplete,
-    hero_2=hero_autocomplete,
-    hero_3=hero_autocomplete,
+    hero=hero_autocomplete,
 )
 async def want_a_hero(
     interaction: discord.Interaction,
     game_name: str,
     alliance: str,
-    hero_1: str,
-    medals_1: int,
-    hero_2: str | None = None,
-    medals_2: int | None = None,
-    hero_3: str | None = None,
-    medals_3: int | None = None,
-    universal_medals: int | None = None,
+    hero: str,
+    medals_needed: int,
 ):
     logger.info(
         f"[{interaction.user}] /wantahero — game={game_name!r}, "
-        f"alliance={alliance!r}, hero_1={hero_1!r}({medals_1}), "
-        f"hero_2={hero_2!r}({medals_2}), hero_3={hero_3!r}({medals_3}), "
-        f"uni={universal_medals}"
+        f"alliance={alliance!r}, hero={hero!r}, medals={medals_needed}"
     )
 
     # ── Sanitize game name ────────────────────────────────────────────────────
@@ -223,82 +202,42 @@ async def want_a_hero(
         )
         return
 
-    # ── Validate universal medals ─────────────────────────────────────────────
-    clean_uni, err = sanitize.universal_medals(universal_medals)
-    if err:
-        await interaction.response.send_message(err, ephemeral=True)
+    # ── Validate hero ─────────────────────────────────────────────────────────
+    if not hero_store.exists(hero):
+        valid_heroes = ", ".join(f"`{n}`" for n in hero_store.get_all())
+        await interaction.response.send_message(
+            f"❌ **{discord.utils.escape_markdown(hero)}** is not in the hero list.\n"
+            f"Available heroes: {valid_heroes}\n"
+            f"Ask a **{config.ADMIN_ROLE_NAME}** to add them with `/hero_manage add`.",
+            ephemeral=True,
+        )
         return
-
-    # ── Build the list of (hero, medals) pairs to submit ─────────────────────
-    # hero_2/hero_3 require their matching medals field; ignore unpaired entries
-    hero_slots: list[tuple[str, int]] = []
-
-    for slot_num, (hero, medals) in enumerate(
-        [(hero_1, medals_1), (hero_2, medals_2), (hero_3, medals_3)], start=1
-    ):
-        if hero is None:
-            continue
-        if not hero_store.exists(hero):
-            valid_heroes = ", ".join(f"`{n}`" for n in hero_store.get_all())
-            await interaction.response.send_message(
-                f"❌ **Hero {slot_num}:** `{discord.utils.escape_markdown(hero)}` is not in the hero list.\n"
-                f"Available heroes: {valid_heroes}\n"
-                f"Ask a **{config.ADMIN_ROLE_NAME}** to add them with `/hero_manage add`.",
-                ephemeral=True,
-            )
-            return
-        if medals is None:
-            await interaction.response.send_message(
-                f"❌ **Hero {slot_num}** (`{discord.utils.escape_markdown(hero)}`) "
-                f"needs a **Medals {slot_num}** value.",
-                ephemeral=True,
-            )
-            return
-        hero_slots.append((hero, medals))
 
     await interaction.response.defer()
 
-    # ── Persist each hero as its own request row ──────────────────────────────
-    submitted: list[dict] = []
-    for hero, medals in hero_slots:
-        rid = _persist_request(
-            discord_user_id=str(interaction.user.id),
-            discord_username=str(interaction.user),
-            game_name=clean_name,
-            alliance=alliance,
-            hero=hero,
-            medals_needed=medals,
-            universal_medals=clean_uni,
-        )
-        submitted.append({"id": rid, "hero": hero, "medals": medals})
-
-    sheets_note = (
-        "\n📊 Also logged to the tracking spreadsheet." if bot.sheets else ""
+    request_id = _persist_request(
+        discord_user_id=str(interaction.user.id),
+        discord_username=str(interaction.user),
+        game_name=clean_name,
+        alliance=alliance,
+        hero=hero,
+        medals_needed=medals_needed,
     )
 
-    # ── Response embed ────────────────────────────────────────────────────────
+    sheets_note = "\n📊 Also logged to the tracking spreadsheet." if bot.sheets else ""
+    medal_label = f"{medals_needed} Medal{'s' if medals_needed > 1 else ''}"
+
     embed = discord.Embed(
-        title="⚔️ Hero Request(s) Submitted!",
-        description=(
-            f"Recorded **{len(submitted)}** request(s) for **{clean_name}**."
-            f"{sheets_note}"
-        ),
+        title="⚔️ Hero Request Submitted!",
+        description=f"Your request has been recorded. Good luck, Commander!{sheets_note}",
         color=discord.Color.gold(),
     )
-    embed.add_field(name="Alliance", value=alliance, inline=True)
-    if clean_uni is not None:
-        embed.add_field(name="Universal Medals Owned", value=str(clean_uni), inline=True)
-    embed.add_field(name="​", value="​", inline=False)  # spacer
-
-    for entry in submitted:
-        medal_label = f"{entry['medals']} Medal{'s' if entry['medals'] > 1 else ''}"
-        embed.add_field(
-            name=f"Request #{entry['id']} — {entry['hero']}",
-            value=f"**Medals needed:** {medal_label}",
-            inline=False,
-        )
-
-    embed.set_footer(text=f"Submitted by {interaction.user.display_name}")
+    embed.add_field(name="Request ID",    value=f"`#{request_id}`", inline=True)
+    embed.add_field(name="Game Name",     value=clean_name,         inline=True)
+    embed.add_field(name="Alliance",      value=alliance,           inline=True)
+    embed.add_field(name="Hero",          value=hero,               inline=True)
+    embed.add_field(name="Medals Needed", value=medal_label,        inline=True)
+    embed.set_footer(text=f"Submitted by {interaction.user.display_name} • Request #{request_id}")
     await interaction.followup.send(embed=embed)
 
 
@@ -368,7 +307,7 @@ async def hero_report(interaction: discord.Interaction, week_offset: int = 0):
 
             hero      = req.get("hero", "") or "—"
             alliance  = req.get("alliance", "") or "—"
-            uni       = req.get("universal_medals")
+            mge       = req.get("selected_for_mge") or req.get("Selected for MGE")
             submitted = req.get("created_at", "") or "—"
 
             lines = [
@@ -376,8 +315,8 @@ async def hero_report(interaction: discord.Interaction, week_offset: int = 0):
                 f"**Hero:** {hero}",
                 f"**Medals Needed:** {medal_label}",
             ]
-            if uni is not None:
-                lines.append(f"**Universal Medals:** {uni}")
+            if mge:
+                lines.append(f"**Selected for MGE:** {mge}")
             lines.append(f"**Submitted:** {submitted} UTC")
 
             req_id   = req.get("id", "—")
@@ -483,7 +422,6 @@ async def hero_delete(interaction: discord.Interaction, request_id: int):
     alliance="New alliance (leave blank to keep current)",
     hero="New hero selection (leave blank to keep current)",
     medals_needed="New medal count (leave blank to keep current)",
-    universal_medals="New Universal Medals count (leave blank to keep current)",
 )
 @app_commands.choices(medals_needed=MEDAL_CHOICES)
 @app_commands.autocomplete(
@@ -497,12 +435,11 @@ async def hero_update(
     alliance: str | None = None,
     hero: str | None = None,
     medals_needed: int | None = None,
-    universal_medals: int | None = None,
 ):
     logger.info(
         f"[{interaction.user}] /hero_update — request_id={request_id}, "
         f"game_name={game_name!r}, alliance={alliance!r}, hero={hero!r}, "
-        f"medals_needed={medals_needed}, universal_medals={universal_medals}"
+        f"medals_needed={medals_needed}"
     )
 
     if not is_hero_admin(interaction):
@@ -544,17 +481,10 @@ async def hero_update(
         )
         return
 
-    if universal_medals is not None:
-        universal_medals, err = sanitize.universal_medals(universal_medals)
-        if err:
-            await interaction.response.send_message(err, ephemeral=True)
-            return
-
-    new_game_name      = game_name       if game_name       is not None else req["game_name"]
-    new_alliance       = alliance        if alliance         is not None else req["alliance"]
-    new_hero           = hero            if hero             is not None else req.get("hero", "")
-    new_medals_needed  = medals_needed   if medals_needed    is not None else req["medals_needed"]
-    new_universal      = universal_medals if universal_medals is not None else req["universal_medals"]
+    new_game_name     = game_name      if game_name      is not None else req["game_name"]
+    new_alliance      = alliance       if alliance        is not None else req["alliance"]
+    new_hero          = hero           if hero            is not None else req.get("hero", "")
+    new_medals_needed = medals_needed  if medals_needed   is not None else req["medals_needed"]
 
     bot.db.update_request(
         request_id=request_id,
@@ -562,7 +492,6 @@ async def hero_update(
         alliance=new_alliance,
         hero=new_hero,
         medals_needed=new_medals_needed,
-        universal_medals=new_universal,
     )
     logger.info(f"[{interaction.user}] Updated request #{request_id}.")
 
@@ -572,8 +501,6 @@ async def hero_update(
     embed.add_field(name="Alliance",      value=new_alliance,   inline=True)
     embed.add_field(name="Hero",          value=new_hero,       inline=True)
     embed.add_field(name="Medals Needed", value=medal_label,    inline=True)
-    if new_universal is not None:
-        embed.add_field(name="Universal Medals", value=str(new_universal), inline=True)
     embed.set_footer(text=f"Updated by {interaction.user.display_name}")
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
