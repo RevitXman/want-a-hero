@@ -204,9 +204,10 @@ class SheetsManager:
         except gspread.WorksheetNotFound:
             return []
 
-        # get_all_records() uses the first row as keys and skips it automatically
+        # get_all_records() uses the first row as keys and skips it automatically.
+        # Don't pass expected_headers — old tabs may still have "Universal Medals"
+        # instead of "Selected for MGE" and we handle both below.
         raw_rows = ws.get_all_records(
-            expected_headers=_HEADERS,
             value_render_option="UNFORMATTED_VALUE",
         )
 
@@ -216,7 +217,10 @@ class SheetsManager:
             if not game_name:
                 continue  # skip blank rows
 
-            mge_val = str(row.get("Selected for MGE", "")).strip()
+            # Accept both the new and legacy column name
+            mge_val = str(
+                row.get("Selected for MGE") or row.get("Universal Medals") or ""
+            ).strip()
             results.append({
                 "id":               row.get("Request ID", "—"),
                 "discord_username": str(row.get("Discord User", "")).strip(),

@@ -634,6 +634,41 @@ async def hero_manage_remove(interaction: discord.Interaction, name: str):
 
 
 # ─────────────────────────────────────────────
+# /hero_sync — force Discord command refresh (Hero Admin)
+# ─────────────────────────────────────────────
+
+
+@bot.tree.command(
+    name="hero_sync",
+    description="[Hero Admin] Force Discord to refresh the bot's command list.",
+)
+async def hero_sync(interaction: discord.Interaction):
+    logger.info(f"[{interaction.user}] /hero_sync triggered.")
+
+    if not is_hero_admin(interaction):
+        await interaction.response.send_message(
+            f"❌ You need the **{config.ADMIN_ROLE_NAME}** role to use this command.",
+            ephemeral=True,
+        )
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    if config.GUILD_ID:
+        guild = discord.Object(id=config.GUILD_ID)
+        bot.tree.copy_global_to(guild=guild)
+        synced = await bot.tree.sync(guild=guild)
+    else:
+        synced = await bot.tree.sync()
+
+    logger.info(f"[{interaction.user}] Synced {len(synced)} command(s) to Discord.")
+    await interaction.followup.send(
+        f"✅ Synced **{len(synced)}** command(s) to Discord successfully.",
+        ephemeral=True,
+    )
+
+
+# ─────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────
 

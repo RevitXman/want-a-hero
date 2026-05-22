@@ -19,16 +19,7 @@ _HEROES_FILE = os.path.join(os.path.dirname(config.DB_PATH), "heroes.json")
 
 # Starter list — edit freely via /hero_manage add / remove
 DEFAULT_HEROES: list[str] = [
-    "Alexander the Great",
-    "Cao Cao",
-    "Charlemagne",
-    "El Cid",
-    "Genghis Khan",
-    "Hannibal Barca",
-    "Joan of Arc",
-    "Julius Caesar",
-    "Richard I",
-    "Saladin",
+    "Confucius",
 ]
 
 MAX_HERO_NAME_LEN = 50
