@@ -147,6 +147,7 @@ def _persist_request(
                 discord_username=discord_username,
                 game_name=game_name,
                 alliance=alliance,
+                hero=hero,
                 medals_needed=medals_needed,
                 universal_medals=universal_medals,
             )
@@ -324,8 +325,20 @@ async def hero_report(interaction: discord.Interaction, week_offset: int = 0):
 
     await interaction.response.defer(ephemeral=True)
 
-    requests = bot.db.get_requests_for_week(week_offset=week_offset)
     week_label = bot.db.get_week_label(week_offset=week_offset)
+
+    # ── Data source: Google Sheets (preferred) or SQLite fallback ─────────────
+    if bot.sheets:
+        try:
+            requests = bot.sheets.get_requests_for_week(week_offset=week_offset)
+            data_source = "📊 Google Sheets"
+        except Exception as exc:
+            logger.error(f"Sheets read failed, falling back to SQLite: {exc}")
+            requests = bot.db.get_requests_for_week(week_offset=week_offset)
+            data_source = "🗄️ Local database (Sheets unavailable)"
+    else:
+        requests = bot.db.get_requests_for_week(week_offset=week_offset)
+        data_source = "🗄️ Local database"
 
     if not requests:
         await interaction.followup.send(
@@ -339,25 +352,39 @@ async def hero_report(interaction: discord.Interaction, week_offset: int = 0):
     for page_num, page in enumerate(pages):
         embed = discord.Embed(
             title=f"📋 Hero Requests — {week_label}",
-            description=f"Total: **{len(requests)}** request(s)",
+            description=f"Total: **{len(requests)}** request(s) · Source: {data_source}",
             color=discord.Color.blue(),
         )
         if len(pages) > 1:
             embed.title += f" (Page {page_num + 1}/{len(pages)})"
 
         for req in page:
-            medals = req["medals_needed"]
-            medal_label = f"{medals} Medal{'s' if medals > 1 else ''}"
+            medals = req.get("medals_needed", 0)
+            try:
+                medals = int(medals)
+            except (ValueError, TypeError):
+                medals = 0
+            medal_label = f"{medals} Medal{'s' if medals != 1 else ''}" if medals else "—"
+
+            hero      = req.get("hero", "") or "—"
+            alliance  = req.get("alliance", "") or "—"
+            uni       = req.get("universal_medals")
+            submitted = req.get("created_at", "") or "—"
+
             lines = [
-                f"**Alliance:** {req['alliance']}",
-                f"**Hero:** {req.get('hero', '—')}",
+                f"**Alliance:** {alliance}",
+                f"**Hero:** {hero}",
                 f"**Medals Needed:** {medal_label}",
             ]
-            if req["universal_medals"] is not None:
-                lines.append(f"**Universal Medals:** {req['universal_medals']}")
-            lines.append(f"**Submitted:** {req['created_at']} UTC")
+            if uni is not None:
+                lines.append(f"**Universal Medals:** {uni}")
+            lines.append(f"**Submitted:** {submitted} UTC")
+
+            req_id   = req.get("id", "—")
+            name     = req.get("game_name", "—")
+            discord_ = req.get("discord_username", "—")
             embed.add_field(
-                name=f"#{req['id']} · {req['game_name']} ({req['discord_username']})",
+                name=f"#{req_id} · {name} ({discord_})",
                 value="\n".join(lines),
                 inline=False,
             )

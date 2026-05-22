@@ -9,9 +9,10 @@ Column layout:
   B: Discord User
   C: Game Name
   D: Alliance
-  E: Medals Needed
-  F: Universal Medals
-  G: Submitted At (UTC)
+  E: Hero
+  F: Medals Needed
+  G: Universal Medals
+  H: Submitted At (UTC)
 
 The spreadsheet is identified by GOOGLE_SPREADSHEET_ID in the env.
 Authentication uses a Google service-account JSON key file.
@@ -36,13 +37,14 @@ _HEADERS = [
     "Discord User",
     "Game Name",
     "Alliance",
+    "Hero",
     "Medals Needed",
     "Universal Medals",
     "Submitted At (UTC)",
 ]
 
 # Column widths (pixels) set on new tabs to improve readability
-_COLUMN_WIDTHS = [100, 180, 180, 180, 130, 150, 190]
+_COLUMN_WIDTHS = [100, 180, 180, 130, 200, 130, 150, 190]
 
 
 def _utcnow() -> datetime:
@@ -164,6 +166,7 @@ class SheetsManager:
         alliance: str,
         medals_needed: int,
         universal_medals: Optional[int] = None,
+        hero: str = "",
     ) -> None:
         """Append a hero request row to the current week's tab."""
         tab_name = _week_tab_name()
@@ -175,11 +178,55 @@ class SheetsManager:
             discord_username,
             game_name,
             alliance,
+            hero,
             medals_needed,
             universal_medals if universal_medals is not None else "",
             now_str,
         ]
         ws.append_row(row, value_input_option="USER_ENTERED")
+
+    def get_requests_for_week(self, week_offset: int = 0) -> list[dict]:
+        """Read all request rows from a weekly tab.
+
+        Returns a list of normalised dicts with these keys (matching the DB
+        schema so bot.py can use the same embed-building code for both sources):
+            id, discord_username, game_name, alliance, hero,
+            medals_needed, universal_medals, created_at
+
+        Rows where Game Name is blank are skipped (empty / header-only rows).
+        Returns [] if the tab doesn't exist yet.
+        """
+        tab_name = _week_tab_name(week_offset)
+        try:
+            ws = self._sheet.worksheet(tab_name)
+        except gspread.WorksheetNotFound:
+            return []
+
+        # get_all_records() uses the first row as keys and skips it automatically
+        raw_rows = ws.get_all_records(
+            expected_headers=_HEADERS,
+            value_render_option="UNFORMATTED_VALUE",
+        )
+
+        results = []
+        for row in raw_rows:
+            game_name = str(row.get("Game Name", "")).strip()
+            if not game_name:
+                continue  # skip blank rows
+
+            # Normalise types — Sheets returns empty cells as "" not None
+            uni = row.get("Universal Medals", "")
+            results.append({
+                "id":               row.get("Request ID", "—"),
+                "discord_username": str(row.get("Discord User", "")).strip(),
+                "game_name":        game_name,
+                "alliance":         str(row.get("Alliance", "")).strip(),
+                "hero":             str(row.get("Hero", "")).strip(),
+                "medals_needed":    row.get("Medals Needed", 0),
+                "universal_medals": int(uni) if str(uni).strip().isdigit() else None,
+                "created_at":       str(row.get("Submitted At (UTC)", "")).strip(),
+            })
+        return results
 
     def ensure_next_week_tab(self) -> str:
         """
