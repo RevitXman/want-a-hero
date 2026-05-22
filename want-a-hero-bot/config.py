@@ -6,6 +6,18 @@ All values are read from environment variables (loaded via python-dotenv).
 import os
 
 
+def _int_env(key: str, default: int) -> int:
+    """Read an integer env var, safely stripping any trailing inline comments.
+
+    python-dotenv does NOT strip inline comments, so a line like:
+        LOG_MAX_BYTES=5242880   # 5 MB per file
+    produces the raw string '5242880   # 5 MB per file'.
+    This helper splits on '#' and strips whitespace before converting.
+    """
+    raw = os.getenv(key, str(default))
+    return int(raw.split("#")[0].strip())
+
+
 # ── Discord ───────────────────────────────────────────────────────────────────
 
 # The Discord role name that grants admin access to hero commands.
@@ -24,10 +36,10 @@ DB_PATH: str = os.getenv("DB_PATH", "data/hero_requests.db")
 LOG_DIR: str = os.getenv("LOG_DIR", "logs")
 
 # Maximum size (bytes) of a single log file before it rotates.
-LOG_MAX_BYTES: int = int(os.getenv("LOG_MAX_BYTES", str(5 * 1024 * 1024)))  # 5 MB
+LOG_MAX_BYTES: int = _int_env("LOG_MAX_BYTES", 5 * 1024 * 1024)  # 5 MB
 
 # Number of rotated backup files to keep.
-LOG_BACKUP_COUNT: int = int(os.getenv("LOG_BACKUP_COUNT", "7"))
+LOG_BACKUP_COUNT: int = _int_env("LOG_BACKUP_COUNT", 7)
 
 
 # ── Google Sheets ─────────────────────────────────────────────────────────────
