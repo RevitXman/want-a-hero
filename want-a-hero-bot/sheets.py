@@ -185,7 +185,11 @@ class SheetsManager:
             "",          # Selected for MGE — filled manually by admins
             now_str,
         ]
-        ws.append_row(row, value_input_option="USER_ENTERED")
+        # Use explicit next-row calculation instead of append_row() to avoid a
+        # gspread/Sheets-API bug where table-detection shifts each new row
+        # further right when the sheet has formatting applied to columns A:H.
+        next_row = len(ws.get_all_values()) + 1
+        ws.update(f"A{next_row}", [row], value_input_option="USER_ENTERED")
 
     def get_requests_for_week(self, week_offset: int = 0) -> list[dict]:
         """Read all request rows from a weekly tab.
